@@ -69,6 +69,6 @@ class RawEvent:
             id=self.id,
             name="RawEvent",
             seqNum=self.seqNum,
-            eventTimestamp=str(self.eventTimestamp),
+            eventTimestamp=self.eventTimestamp.isoformat(),
             raw=''.join('{:02x}'.format(x) for x in self.raw),
         )
