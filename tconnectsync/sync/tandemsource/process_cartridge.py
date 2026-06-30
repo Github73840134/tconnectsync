@@ -1,6 +1,6 @@
 import logging
 import arrow
-from tconnectsync.utils.time import format_datetime
+from tconnectsync.util.time import format_datetime
 from ...features import DEFAULT_FEATURES
 from ... import features
 from ...eventparser.generic import Events, decode_raw_events, EVENT_LEN
