@@ -13,20 +13,26 @@ from ...parser.nightscout import (
     NightscoutEntry
 )
 
+from typing import Iterable, List, Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from ...api import TConnectApi
+    from ...nightscout import NightscoutApi
+    from ...eventparser.raw_event import BaseEvent
+
 logger = logging.getLogger(__name__)
 
 class ProcessBolus:
-    def __init__(self, tconnect, nightscout, tconnect_device_id, pretend, features=DEFAULT_FEATURES):
+    def __init__(self, tconnect: "TConnectApi", nightscout: "NightscoutApi", tconnect_device_id: str, pretend: bool, features: List[str] = DEFAULT_FEATURES) -> None:
         self.tconnect = tconnect
         self.nightscout = nightscout
         self.tconnect_device_id = tconnect_device_id
         self.pretend = pretend
         self.features = features
 
-    def enabled(self):
+    def enabled(self) -> bool:
         return features.BOLUS in self.features
 
-    def process(self, events, time_start, time_end):
+    def process(self, events: Iterable, time_start: arrow.Arrow, time_end: arrow.Arrow) -> List[dict]:
         logger.debug("ProcessBolus: querying for last uploaded entry")
         last_upload = self.nightscout.last_uploaded_entry(BOLUS_EVENTTYPE, time_start=time_start, time_end=time_end)
         last_upload_time = None
@@ -68,7 +74,7 @@ class ProcessBolus:
 
         return ns_entries
 
-    def write(self, ns_entries):
+    def write(self, ns_entries: List[dict]) -> int:
         count = 0
         for entry in ns_entries:
             if self.pretend:
@@ -81,7 +87,7 @@ class ProcessBolus:
         return count
 
 
-    def bolus_to_nsentry(self, bolusCompleted, bolusRequested1, bolusRequested2, bolusRequested3):
+    def bolus_to_nsentry(self, bolusCompleted: "BaseEvent", bolusRequested1: "BaseEvent", bolusRequested2: "BaseEvent", bolusRequested3: "BaseEvent") -> Optional[dict]:
         suffixes = []
         if bolusRequested2 and bolusRequested2.useroverride == eventtypes.LidBolusRequestedMsg2.UseroverrideEnum.Yes:
             suffixes.append('(Override)')
