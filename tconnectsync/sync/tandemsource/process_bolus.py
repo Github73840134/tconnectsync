@@ -104,7 +104,7 @@ class ProcessBolus:
         return NightscoutEntry.bolus(
             bolus = insulin_float_round(bolusCompleted.insulindelivered),
             carbs = bolusRequested1.carbamount if bolusRequested1 and bolusRequested1.carbamount>0 else None,
-            created_at = bolusCompleted.eventTimestamp.format(),
+            created_at = bolusCompleted.eventTimestamp.isoformat(),
             notes = notes + suffix,
             bg = bolusRequested1.BG if bolusRequested1 and bolusRequested1.BG > 0 else None,
             pump_event_id = ",".join(seq_nums)
