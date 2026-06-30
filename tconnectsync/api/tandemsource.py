@@ -365,8 +365,11 @@ class TandemSourceApi:
             raise Exception('No access token provided')
         return {
             'Authorization': 'Bearer %s' % self.accessToken,
-            'Origin': 'https://tconnect.tandemdiabetes.com',
-            'Referer': 'https://tconnect.tandemdiabetes.com/',
+            # The WAF enforces same-origin: Origin/Referer must match SOURCE_URL
+            # (source.tandemdiabetes.com / source.eu.tandemdiabetes.com), otherwise
+            # it returns HTTP 403 ("The request is blocked").
+            'Origin': self.SOURCE_URL.rstrip('/'),
+            'Referer': self.SOURCE_URL,
             **base_headers()
         }
 
