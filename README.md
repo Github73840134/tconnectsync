@@ -1,5 +1,5 @@
 # tconnectsync
-
+# This project is a fork of version 2.3.4, and fixes the invalid timestamp issues that causes nightscout to crash.
 ![Python Package workflow](https://github.com/jwoglom/tconnectsync/actions/workflows/python-package.yml/badge.svg)
 [![codecov](https://codecov.io/gh/jwoglom/tconnectsync/branch/master/graph/badge.svg)](https://codecov.io/gh/jwoglom/tconnectsync)
 
