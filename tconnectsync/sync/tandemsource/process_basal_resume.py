@@ -1,6 +1,7 @@
 import logging
 import arrow
 
+from tconnectsync.util.time import format_datetime
 from ...features import DEFAULT_FEATURES
 from ... import features
 from ...eventparser.generic import Events, decode_raw_events, EVENT_LEN
@@ -61,6 +62,6 @@ class ProcessBasalResume:
     def resume_to_nsentry(self, event):
         if type(event) == eventtypes.LidPumpingResumed:
             return NightscoutEntry.basalresume(
-                created_at = event.eventTimestamp.isoformat(),
+                created_at = format_datetime(event.eventTimestamp),
                 pump_event_id = "%s" % event.seqNum
             )
