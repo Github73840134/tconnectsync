@@ -1,6 +1,6 @@
 import logging
 import arrow
-
+from tconnectsync.util.time import format_datetime
 from ...features import DEFAULT_FEATURES
 from ... import features
 from ...eventparser.generic import Events, decode_raw_events, EVENT_LEN
@@ -73,7 +73,7 @@ class ProcessCGMAlert:
 
         if type(alert) == eventtypes.LidCgmAlertActivated:
             return NightscoutEntry.cgm_alert(
-                created_at = alert.eventTimestamp.isoformat(),
+                created_at = format_datetime(alert.eventTimestamp),
                 reason = ("CGM Alert (%s)" % alert.dalertid.name) if alert.dalertid else "CGM Alert (Unknown)",
                 pump_event_id = "%s" % alert.seqNum
             )
@@ -82,13 +82,13 @@ class ProcessCGMAlert:
                 logger.info("ProcessCGMAlert: Skipping alert with CgmOutOfRange dalertid %d: %s" % (alert.dalertidRaw, alert))
                 return None
             return NightscoutEntry.cgm_alert(
-                created_at = alert.eventTimestamp.isoformat(),
+                created_at = format_datetime(alert.eventTimestamp),
                 reason = ("Dexcom CGM Alert (%s)" % alert.dalertid.name) if alert.dalertid else "Dexcom CGM Alert (Unknown)",
                 pump_event_id = "%s" % alert.seqNum
             )
         elif type(alert) == eventtypes.LidCgmAlertActivatedFsl2:
             return NightscoutEntry.cgm_alert(
-                created_at = alert.eventTimestamp.isoformat(),
+                created_at = format_datetime(alert.eventTimestamp),
                 reason = ("Libre CGM Alert (%s)" % alert.dalertid.name) if alert.dalertid else "Libre CGM Alert (Unknown)",
                 pump_event_id = "%s" % alert.seqNum
             )
