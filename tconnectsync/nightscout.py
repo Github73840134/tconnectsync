@@ -22,8 +22,6 @@ def format_datetime(date: DateLike) -> str:
 def time_range(field_name: str, start_time: Optional[DateLike], end_time: Optional[DateLike], t_to_space: bool = False) -> str:
 	def fmt(date: DateLike) -> str:
 		ret = format_datetime(date)
-		if t_to_space:
-			return ret.replace('T', ' ')
 		return ret
 	arg = ''
 	if start_time:
