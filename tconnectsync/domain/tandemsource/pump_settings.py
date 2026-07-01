@@ -3,7 +3,7 @@ from dataclasses_json import dataclass_json
 from typing import List
 
 # These dataclasses model the `settings.details` blob from the Tandem Source
-# bff/pumper endpoint (surfaced as PumpMetadata.settings). Only the fields the
+# bff/pumper endpoint (BffPump.settings.details). Only the fields the
 # profile sync consumes are declared; dataclasses_json ignores the rest.
 
 @dataclass_json

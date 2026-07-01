@@ -33,9 +33,9 @@ class FakeTandemSourceApi:
     def pump_events(self, device_id, time_start, time_end, fetch_all_event_types=False):
         return self.events
 
-    def pump_metadata(self):
-        """Return empty metadata for testing"""
-        return []
+    def get_pumper(self):
+        """Return empty pumper for testing"""
+        return {'pumps': []}
 
     def needs_relogin(self):
         return False
@@ -52,8 +52,8 @@ class TestProcessTimeRangeBasalDuration(unittest.TestCase):
         self.nightscout.last_uploaded_entry = lambda *args, **kwargs: None
 
         self.tconnectDevice = {
-            'deviceId': 'test-device-123',
-            'maxDateWithEvents': '2025-11-18T13:00:00-05:00'
+            'assignmentId': 'test-device-123',
+            'maxDateOfEvents': '2025-11-18T13:00:00-05:00'
         }
 
         self.secret = build_secrets(
@@ -165,8 +165,8 @@ class TestProcessTimeRangeJsonBasal(unittest.TestCase):
         )
 
         self.tconnectDevice = {
-            'deviceId': 'test',
-            'maxDateWithEvents': '2026-05-07T00:20:00-04:00'
+            'assignmentId': 'test',
+            'maxDateOfEvents': '2026-05-07T00:20:00-04:00'
         }
 
         self.process = ProcessTimeRange(

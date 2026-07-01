@@ -5,6 +5,7 @@ import sys
 import arrow
 
 from ...features import DEFAULT_FEATURES
+from ...api.tandemsource import naive_local_to_utc
 from .process import ProcessTimeRange
 from .choose_device import ChooseDevice
 
@@ -47,7 +48,7 @@ class TandemSourceAutoupdate:
             tconnectDevice = ChooseDevice(self.secret, tconnect).choose()
 
             event_seqnum = None
-            cur_max_date_with_events = arrow.get(tconnectDevice['maxDateWithEvents']).float_timestamp
+            cur_max_date_with_events = arrow.get(naive_local_to_utc(tconnectDevice['maxDateOfEvents'])).float_timestamp
             if not self.last_max_date_with_events or cur_max_date_with_events > self.last_max_date_with_events:
                 logger.info('New reported tandemsource data. (cur_max_date: %s last_max_date: %s)' % (cur_max_date_with_events, self.last_max_date_with_events))
 

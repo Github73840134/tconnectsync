@@ -23,16 +23,18 @@ SETTINGS_DETAILS = {
 
 
 def _meta(device_id=DEVICE_ID, settings=None):
+    # settings, when provided, is the raw settings.details blob; wrap it in the
+    # BFF settings envelope ({'details': ...}) that update_profiles unwraps.
     return {
-        'deviceId': device_id,
+        'assignmentId': device_id,
         'serialNumber': '1518994',
         'modelNumber': '1004000',
         'modelName': 'Tandem Mobi™ System',
         'softwareVersion': '1.0.0.0',
         'algorithm': 'Control-IQ',
-        'maxDateWithEvents': '2026-05-27T23:03:06',
-        'minDateWithEvents': '2020-01-02T00:00:00',
-        'settings': settings,
+        'maxDateOfEvents': '2026-05-27T23:03:06',
+        'availableDataRange': {'start': '2020-01-02T00:00:00', 'end': '2026-05-27T23:03:06'},
+        'settings': {'details': settings} if settings is not None else None,
     }
 
 
@@ -44,8 +46,8 @@ class FakeTandemSourceApi:
     def __init__(self, metadata):
         self._metadata = metadata
 
-    def pump_metadata(self):
-        return self._metadata
+    def get_pumper(self):
+        return {'pumps': self._metadata}
 
     def needs_relogin(self):
         # Required so TConnectApi.tandemsource returns this fake, not a real API.

@@ -6,7 +6,7 @@ import unittest
 import urllib.parse
 from unittest.mock import patch
 
-from tconnectsync.api.tandemsource import TandemSourceApi
+from tconnectsync.api.tandemsource import TandemSourceApi, naive_local_to_utc
 from tconnectsync.api.common import ApiException
 from tconnectsync.eventparser import events as eventtypes
 
@@ -63,131 +63,40 @@ BFF_PUMPER = {
 }
 
 
-class TestPumpMetadataAdapter(unittest.TestCase):
+class TestNaiveLocalToUtc(unittest.TestCase):
+    """The module-level naive_local_to_utc() helper is the sole survivor of the
+    removed PumpMetadata adapter. It normalizes a BFF pump-local naive
+    wall-clock timestamp to true UTC, and is now called at the specific date
+    call sites that compare against real UTC."""
     maxDiff = None
-
-    def _api(self):
-        # Bypass __init__ (which performs a network login) to test the adapter.
-        return TandemSourceApi.__new__(TandemSourceApi)
-
-    def test_bff_pump_to_metadata_active_pump(self):
-        meta = TandemSourceApi._bff_pump_to_metadata(BFF_PUMPER["pumps"][0])
-        self.assertEqual(meta["deviceId"], "1b493210-9336-4901-a329-a352775738c5")
-        self.assertEqual(meta["serialNumber"], "90556643")
-        self.assertEqual(meta["modelNumber"], "1000354")
-        self.assertEqual(meta["softwareVersion"], "7.8.0.0")
-        self.assertEqual(meta["algorithm"], "Control-IQ")
-        # maxDateOfEvents -> maxDateWithEvents, normalized from pump-local naive
-        # (America/New_York, EST/UTC-5 in Feb) to true UTC.
-        self.assertEqual(meta["maxDateWithEvents"], "2022-02-17T03:45:58+00:00")
-        # availableDataRange.start -> minDateWithEvents, normalized from
-        # pump-local naive (America/New_York, EDT/UTC-4 in May) to true UTC.
-        self.assertEqual(meta["minDateWithEvents"], "2021-05-06T16:31:19+00:00")
-        # settings.details -> settings
-        self.assertEqual(meta["settings"], {"profiles": {"numberOfProfiles": 1}})
-
-    def test_bff_pump_to_metadata_never_uploaded_pump(self):
-        meta = TandemSourceApi._bff_pump_to_metadata(BFF_PUMPER["pumps"][1])
-        self.assertEqual(meta["deviceId"], "f6631fff-f403-4ce4-9362-83eff9e2850e")
-        self.assertEqual(meta["serialNumber"], "514387")
-        # null date/settings fields map to None, not KeyError
-        self.assertIsNone(meta["maxDateWithEvents"])
-        self.assertIsNone(meta["minDateWithEvents"])
-        self.assertIsNone(meta["settings"])
-
-    def test_pump_metadata_maps_all_pumps(self):
-        api = self._api()
-        with patch.object(TandemSourceApi, "get_pumper", return_value=BFF_PUMPER):
-            metas = api.pump_metadata()
-        self.assertEqual(len(metas), 2)
-        self.assertEqual(
-            [m["deviceId"] for m in metas],
-            [
-                "1b493210-9336-4901-a329-a352775738c5",
-                "f6631fff-f403-4ce4-9362-83eff9e2850e",
-            ],
-        )
-
-    def test_pump_metadata_empty_when_no_pumps(self):
-        api = self._api()
-        with patch.object(TandemSourceApi, "get_pumper", return_value={}):
-            self.assertEqual(api.pump_metadata(), [])
-
-    def test_available_data_range_key_absent(self):
-        pump = dict(BFF_PUMPER["pumps"][0])
-        del pump["availableDataRange"]
-        meta = TandemSourceApi._bff_pump_to_metadata(pump)
-        self.assertIsNone(meta["minDateWithEvents"])
-
-    def test_settings_key_absent(self):
-        pump = dict(BFF_PUMPER["pumps"][0])
-        del pump["settings"]
-        meta = TandemSourceApi._bff_pump_to_metadata(pump)
-        self.assertIsNone(meta["settings"])
-
-    def test_missing_required_key_raises(self):
-        pump = dict(BFF_PUMPER["pumps"][0])
-        del pump["serialNumber"]
-        with self.assertRaises(KeyError):
-            TandemSourceApi._bff_pump_to_metadata(pump)
-
-    def test_other_required_keys_raise_when_absent(self):
-        # The 5 always-present BFF fields are still accessed with required
-        # subscript syntax; absence is a genuine error.
-        for key in ("assignmentId", "modelNumber", "modelName", "softwareVersion"):
-            pump = dict(BFF_PUMPER["pumps"][0])
-            del pump[key]
-            with self.assertRaises(KeyError, msg=key):
-                TandemSourceApi._bff_pump_to_metadata(pump)
-
-    def test_missing_algorithm_maps_to_none(self):
-        # algorithm is optional in the canonical BFF source; its absence must
-        # not raise (previously a KeyError) and should map to None.
-        pump = dict(BFF_PUMPER["pumps"][0])
-        del pump["algorithm"]
-        meta = TandemSourceApi._bff_pump_to_metadata(pump)
-        self.assertIsNone(meta["algorithm"])
 
     def test_naive_dates_normalized_to_utc(self):
         # America/New_York is set in tests/conftest.py. Feb -> EST (UTC-5),
-        # May -> EDT (UTC-4).
-        meta = TandemSourceApi._bff_pump_to_metadata(BFF_PUMPER["pumps"][0])
-        self.assertEqual(meta["maxDateWithEvents"], "2022-02-17T03:45:58+00:00")
-        self.assertEqual(meta["minDateWithEvents"], "2021-05-06T16:31:19+00:00")
+        # May -> EDT (UTC-4). These are the raw BffPump maxDateOfEvents /
+        # availableDataRange.start values that call sites now normalize.
+        self.assertEqual(
+            naive_local_to_utc(BFF_PUMPER["pumps"][0]["maxDateOfEvents"]),
+            "2022-02-17T03:45:58+00:00",
+        )
+        self.assertEqual(
+            naive_local_to_utc(BFF_PUMPER["pumps"][0]["availableDataRange"]["start"]),
+            "2021-05-06T16:31:19+00:00",
+        )
 
     def test_naive_local_to_utc_none_passthrough(self):
-        self.assertIsNone(TandemSourceApi._naive_local_to_utc(None))
+        self.assertIsNone(naive_local_to_utc(None))
 
     def test_naive_local_to_utc_idempotent_no_double_shift(self):
         # A value that already carries a tz must not be shifted again. Feed the
         # already-UTC output back in and confirm it is unchanged.
-        first = TandemSourceApi._naive_local_to_utc("2022-02-16T22:45:58")
+        first = naive_local_to_utc("2022-02-16T22:45:58")
         self.assertEqual(first, "2022-02-17T03:45:58+00:00")
-        self.assertEqual(TandemSourceApi._naive_local_to_utc(first), first)
+        self.assertEqual(naive_local_to_utc(first), first)
         # A 'Z'-suffixed (true UTC) value is passed through as UTC unchanged.
         self.assertEqual(
-            TandemSourceApi._naive_local_to_utc("2022-09-20T05:50:12Z"),
+            naive_local_to_utc("2022-09-20T05:50:12Z"),
             "2022-09-20T05:50:12+00:00",
         )
-
-    def test_mobi_controliq_plus_passthrough(self):
-        pump = {
-            "algorithm": "Control-IQ+",
-            "availableDataRange": {"start": "2024-01-01T00:00:00", "end": "2026-05-27T23:03:06"},
-            "assignmentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            "maxDateOfEvents": "2026-05-27T23:03:06",
-            "modelNumber": "1004000",
-            "modelName": "Tandem Mobi™ System",
-            "partNumber": "1005000",
-            "serialNumber": "1518994",
-            "softwareVersion": "1.0.0.0",
-            "lastUploadClientType": "mobile_mobi",
-            "settings": None,
-        }
-        meta = TandemSourceApi._bff_pump_to_metadata(pump)
-        self.assertEqual(meta["algorithm"], "Control-IQ+")
-        self.assertEqual(meta["modelName"], "Tandem Mobi™ System")
-        self.assertEqual(meta["deviceId"], "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
 
 class TestDefaultEventIds(unittest.TestCase):
@@ -429,6 +338,87 @@ class TestPumpEvents(unittest.TestCase):
         with patch.object(TandemSourceApi, "get_pump_logs", return_value={}):
             out = list(api.pump_events("dev", "2024-01-01", "2024-01-10"))
         self.assertEqual(out, [])
+
+
+class TestPumpEventsRealEventTypes(unittest.TestCase):
+    """Parse bolus (20), basal (279), CGM (399) and alarm (5) events through
+    pump_events(). eventProperties use Tandem's real camelCase names; bitmask
+    fields arrive as arrays of set-bit indices."""
+    maxDiff = None
+
+    def _api(self):
+        api = TandemSourceApi.__new__(TandemSourceApi)
+        api.pumperId = "PUMPER123"
+        return api
+
+    RESPONSE = {
+        "events": [
+            _ev(0, 201, event_code=20, completionStatus=3, bolusId=777,
+                insulinDelivered=2.5, insulinRequested=2.5, iob=1.1),
+            _ev(0, 202, event_code=279, commandedRateSource=1, commandedRate=800,
+                profileBasalRate=800, algorithmRate=0, tempRate=0),
+            _ev(0, 203, event_code=399, glucoseValueStatus=0, cgmDataType=[0], rate=-5,
+                algorithmState=2, rssi=-60, currentGlucoseDisplayValue=112,
+                egvTimeStamp=123456, egvInfoBitmask=[], interval=5),
+            _ev(0, 204, event_code=5, alarmId=2, faultLocatorData=100, param1=1, param2=2.0),
+        ],
+        "clockChanges": [],
+    }
+
+    def _parse(self):
+        api = self._api()
+        with patch.object(TandemSourceApi, "get_pump_logs", return_value=self.RESPONSE):
+            out = list(api.pump_events("dev", "2024-01-01", "2024-01-10"))
+        return {type(e).__name__: e for e in out}
+
+    def test_all_four_event_types_parse(self):
+        parsed = self._parse()
+        self.assertEqual(
+            set(parsed),
+            {"LidBolusCompleted", "LidBasalDelivery", "LidCgmDataG7", "LidAlarmActivated"},
+        )
+
+    def test_bolus_completed_decodes(self):
+        e = self._parse()["LidBolusCompleted"]
+        self.assertEqual(e.eventId, 20)
+        self.assertEqual(e.seqNum, 201)
+        self.assertEqual(e.bolusid, 777)
+        self.assertEqual(e.insulindelivered, 2.5)
+        self.assertEqual(e.insulinrequested, 2.5)
+        self.assertEqual(e.IOB, 1.1)
+        self.assertEqual(e.completionstatus,
+                         eventtypes.LidBolusCompleted.CompletionstatusEnum.Completed)
+
+    def test_basal_delivery_decodes(self):
+        e = self._parse()["LidBasalDelivery"]
+        self.assertEqual(e.eventId, 279)
+        self.assertEqual(e.seqNum, 202)
+        self.assertEqual(e.commandedRate, 800)
+        self.assertEqual(e.profileBasalRate, 800)
+        self.assertEqual(e.commandedRateSource,
+                         eventtypes.LidBasalDelivery.CommandedratesourceEnum.Profile)
+
+    def test_cgm_g7_decodes(self):
+        e = self._parse()["LidCgmDataG7"]
+        self.assertEqual(e.eventId, 399)
+        self.assertEqual(e.seqNum, 203)
+        self.assertEqual(e.currentglucosedisplayvalue, 112)
+        self.assertEqual(e.glucosevaluestatus,
+                         eventtypes.LidCgmDataG7.GlucosevaluestatusEnum.PreciseValue)
+        # cgmDataType bitmask array [0] -> bit 0 set -> Fmr
+        self.assertEqual(e.cgmDataType,
+                         eventtypes.LidCgmDataG7.CgmdatatypeBitmask.Fmr)
+        # rate is stored raw and scaled x0.1 by the property (-5 -> -0.5 mg/dL/min)
+        self.assertAlmostEqual(e.rate, -0.5)
+
+    def test_alarm_activated_decodes(self):
+        e = self._parse()["LidAlarmActivated"]
+        self.assertEqual(e.eventId, 5)
+        self.assertEqual(e.seqNum, 204)
+        self.assertEqual(e.faultlocatordata, 100)
+        self.assertEqual(e.param2, 2.0)
+        self.assertEqual(e.alarmid,
+                         eventtypes.LidAlarmActivated.AlarmidEnum.OcclusionAlarm)
 
 
 class TestGetRetry(unittest.TestCase):

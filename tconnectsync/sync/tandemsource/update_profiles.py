@@ -35,16 +35,17 @@ class UpdateProfiles:
         upload_mode = _get_default_upload_mode()
         logger.debug("UpdateProfiles: getting Tandem Source profile data")
 
-        all_metadata = self.tconnect.tandemsource.pump_metadata()
+        all_metadata = self.tconnect.tandemsource.get_pumper().get('pumps', [])
         pump_meta = None
         for m in all_metadata:
-            if m['deviceId'] == self.tconnect_device_id:
+            if m['assignmentId'] == self.tconnect_device_id:
                 pump_meta = m
 
         if not pump_meta:
             return False
 
-        raw_settings = pump_meta.get("settings")
+        s = pump_meta.get("settings")
+        raw_settings = s["details"] if s else None
         if not raw_settings:
             return False
 

@@ -30,6 +30,36 @@ from ..eventparser.generic import Events
 logger = logging.getLogger(__name__)
 
 
+def naive_local_to_utc(value: Optional[str]) -> Optional[str]:
+    """Normalize a BFF pump-local naive wall-clock timestamp to a true UTC
+    ISO-8601 string.
+
+    The BFF sends maxDateOfEvents / availableDataRange.start with no tz
+    (e.g. "2022-02-16T22:45:58") even though they are the pump's local
+    wall-clock time. Downstream consumers parse them with arrow.get(...),
+    which assumes UTC, and compare against arrow.utcnow() / time.time()
+    (real UTC), so we shift them here by interpreting the naive value in the
+    configured TIMEZONE_NAME and converting to UTC. Values that already
+    carry a tz (defensive; not seen for these two fields) are passed
+    through unchanged so we never double-shift. None passes through as None
+    (never-uploaded pumps).
+    """
+    if not value:
+        return value
+    # If the string already carries a tz (a trailing 'Z' or a +HH:MM /
+    # -HH:MM offset after the time portion), trust it and never double-shift.
+    # Otherwise it's a naive pump-local wall-clock value: interpret it in the
+    # configured TIMEZONE_NAME. (Per the BFF data these two fields are always
+    # naive; the has-tz branch is purely defensive.)
+    time_part = value.split('T', 1)[-1]
+    has_tz = value.endswith('Z') or '+' in time_part or '-' in time_part
+    if has_tz:
+        parsed = arrow.get(value)
+    else:
+        parsed = arrow.get(value, tzinfo=TIMEZONE_NAME)
+    return parsed.to('UTC').isoformat()
+
+
 class JwtClaims(TypedDict, total=False):
     """Decoded OIDC id_token claims stored on TandemSourceApi.jwtData.
 
@@ -124,35 +154,6 @@ class BffPumper(TypedDict, total=False):
     highGlucoseThreshold: int
     country: str
     pumps: List[BffPump]
-
-
-class PumpMetadata(TypedDict, total=False):
-    """Normalized per-pump metadata the sync code consumes, adapted from a
-    BffPump (see TandemSourceApi.pump_metadata()). This is the stable
-    replacement for the old reportsfacade pump-event-metadata shape.
-
-    deviceId is the UUID assignmentId used as the pump-logs path segment (it
-    replaces the old numeric tconnectDeviceId). settings is the pump settings
-    blob (BffPump.settings.details) or None for a pump that has never uploaded.
-
-    Date fields are ISO-8601 strings or None. maxDateWithEvents and
-    minDateWithEvents are normalized to true UTC here (previously they were the
-    pump-local naive wall-clock strings carried verbatim from BffPump's
-    maxDateOfEvents / availableDataRange.start): the BFF sends those two fields
-    without a tz, so they are interpreted in the configured TIMEZONE_NAME and
-    converted to UTC so consumers can compare them against arrow.utcnow() /
-    time.time(). (BffPump.lastUploadDate, by contrast, already carries a 'Z'
-    and is true UTC.)
-    """
-    deviceId: str
-    serialNumber: str
-    modelNumber: str
-    modelName: str
-    softwareVersion: str
-    algorithm: Optional[str]
-    maxDateWithEvents: Optional[str]
-    minDateWithEvents: Optional[str]
-    settings: Optional[dict]
 
 
 class PumpLogEvent(TypedDict):
@@ -594,66 +595,6 @@ class TandemSourceApi:
         pumps[].settings.details carries the pump settings blob."""
         return self.get('api/reports/bff/pumper/%s' % (self.pumperId), {})
 
-    @staticmethod
-    def _naive_local_to_utc(value: Optional[str]) -> Optional[str]:
-        """Normalize a BFF pump-local naive wall-clock timestamp to a true UTC
-        ISO-8601 string.
-
-        The BFF sends maxDateOfEvents / availableDataRange.start with no tz
-        (e.g. "2022-02-16T22:45:58") even though they are the pump's local
-        wall-clock time. Downstream consumers parse them with arrow.get(...),
-        which assumes UTC, and compare against arrow.utcnow() / time.time()
-        (real UTC), so we shift them here by interpreting the naive value in the
-        configured TIMEZONE_NAME and converting to UTC. Values that already
-        carry a tz (defensive; not seen for these two fields) are passed
-        through unchanged so we never double-shift. None passes through as None
-        (never-uploaded pumps).
-        """
-        if not value:
-            return value
-        # If the string already carries a tz (a trailing 'Z' or a +HH:MM /
-        # -HH:MM offset after the time portion), trust it and never double-shift.
-        # Otherwise it's a naive pump-local wall-clock value: interpret it in the
-        # configured TIMEZONE_NAME. (Per the BFF data these two fields are always
-        # naive; the has-tz branch is purely defensive.)
-        time_part = value.split('T', 1)[-1]
-        has_tz = value.endswith('Z') or '+' in time_part or '-' in time_part
-        if has_tz:
-            parsed = arrow.get(value)
-        else:
-            parsed = arrow.get(value, tzinfo=TIMEZONE_NAME)
-        return parsed.to('UTC').isoformat()
-
-    @staticmethod
-    def _bff_pump_to_metadata(pump: BffPump) -> PumpMetadata:
-        """Adapt one BffPump into the normalized PumpMetadata shape.
-
-        maxDateOfEvents and availableDataRange.start are pump-local naive
-        wall-clock strings; we normalize them to true UTC (via
-        _naive_local_to_utc) so consumers that compare against arrow.utcnow() /
-        time.time() are correct.
-        """
-        settings = pump.get('settings')
-        data_range = pump.get('availableDataRange') or {}
-        meta: PumpMetadata = {
-            'deviceId': pump['assignmentId'],
-            'serialNumber': pump['serialNumber'],
-            'modelNumber': pump['modelNumber'],
-            'modelName': pump['modelName'],
-            'softwareVersion': pump['softwareVersion'],
-            'algorithm': pump.get('algorithm'),
-            'maxDateWithEvents': TandemSourceApi._naive_local_to_utc(pump.get('maxDateOfEvents')),
-            'minDateWithEvents': TandemSourceApi._naive_local_to_utc(data_range.get('start')),
-            'settings': settings['details'] if settings else None,
-        }
-        return meta
-
-    def pump_metadata(self) -> List[PumpMetadata]:
-        """Normalized device list adapted from get_pumper(). This is the
-        BFF-backed replacement for the old reportsfacade pump-event-metadata."""
-        pumper = self.get_pumper()
-        return [self._bff_pump_to_metadata(p) for p in pumper.get('pumps', [])]
-
     # Matches the Tandem Source web app's getLogIDList() (55 IDs) as observed in
     # the live GET api/reports/bff/pump-logs request. Includes FSL3 ids 477/480/486.
     DEFAULT_EVENT_IDS: List[int] = [229,5,28,4,26,99,279,3,16,59,21,55,20,280,64,65,66,61,33,371,171,369,460,172,370,461,372,480,399,256,213,406,477,394,212,404,214,405,486,447,313,60,14,6,90,230,140,12,11,53,13,63,203,307,191]
@@ -661,7 +602,8 @@ class TandemSourceApi:
     def get_pump_logs(self, device_id: str, min_date: Optional[str] = None, max_date: Optional[str] = None, event_ids_filter: Optional[List[int]] = DEFAULT_EVENT_IDS) -> PumpLogsResponse:
         """Fetch pre-decoded pump events for a single date window from the BFF
         endpoint GET api/reports/bff/pump-logs/{device_id}. device_id is the
-        UUID assignmentId (PumpMetadata.deviceId). Returns {events, clockChanges}.
+        UUID assignmentId (BffPump.assignmentId from get_pumper()). Returns
+        {events, clockChanges}.
         The server caps the window at ~4 weeks; callers needing a longer range
         must page by date window (see pump_events).
 
@@ -707,7 +649,7 @@ class TandemSourceApi:
     Fetch and parse pump events from the pump-logs endpoint.
     Default of fetch_all_event_types=False will filter to the same event ids used in the Tandem Source backend.
     If fetch_all_event_types=True, then all event types from the history log will be returned.
-    tconnect_device_id is the UUID assignmentId from pump_metadata() (deviceId).
+    tconnect_device_id is the UUID assignmentId from get_pumper() pumps (BffPump.assignmentId).
     """
     def pump_events(self, tconnect_device_id: str, min_date: Optional[str] = None, max_date: Optional[str] = None, fetch_all_event_types: bool = False) -> Iterator:
         event_ids_filter = None if fetch_all_event_types else self.DEFAULT_EVENT_IDS

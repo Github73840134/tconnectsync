@@ -16,22 +16,23 @@ LOGGER = "tconnectsync.sync.tandemsource.choose_device"
 
 
 class FakeTandemSourceApi:
-    """Fake TandemSource API returning a configurable pump_metadata() list."""
+    """Fake TandemSource API returning a configurable get_pumper() pumps list of
+    raw BffPump dicts."""
     def __init__(self, pumps=None):
         self._pumps = pumps if pumps is not None else []
 
-    def pump_metadata(self):
-        return self._pumps
+    def get_pumper(self):
+        return {'pumps': self._pumps}
 
     def needs_relogin(self):
         return False
 
 
-def pump(serial, deviceId=None, maxDate=None):
+def pump(serial, assignmentId=None, maxDate=None):
     return {
         'serialNumber': serial,
-        'deviceId': deviceId if deviceId is not None else ('dev-' + serial),
-        'maxDateWithEvents': maxDate,
+        'assignmentId': assignmentId if assignmentId is not None else ('dev-' + serial),
+        'maxDateOfEvents': maxDate,
     }
 
 
