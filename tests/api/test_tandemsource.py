@@ -421,6 +421,36 @@ class TestPumpEventsRealEventTypes(unittest.TestCase):
                          eventtypes.LidAlarmActivated.AlarmidEnum.OcclusionAlarm)
 
 
+def _cc(num, code):
+    return {"eventCode": code, "sequenceGroup": 0, "sequenceNumber": num,
+            "pumpDateTime": "2024-01-01T00:00:00", "eventProperties": {}}
+
+
+class TestPumpClockChanges(unittest.TestCase):
+    def _api(self):
+        api = TandemSourceApi.__new__(TandemSourceApi)
+        api.pumperId = "P"
+        return api
+
+    def test_parses_clock_changes(self):
+        with patch.object(TandemSourceApi, "get_pump_logs",
+                          return_value={"clockChanges": [_cc(5, 13), _cc(6, 14)]}):
+            out = list(self._api().pump_clock_changes("dev", "2024-01-01", "2024-01-10"))
+        self.assertEqual([(type(e).__name__, e.seqNum) for e in out],
+                         [("LidTimeChanged", 5), ("LidDateChanged", 6)])
+
+    def test_dedupes_across_windows(self):
+        responses = [{"clockChanges": [_cc(5, 13)]}, {"clockChanges": [_cc(5, 13), _cc(7, 14)]}]
+        with patch.object(TandemSourceApi, "get_pump_logs", side_effect=responses):
+            out = list(self._api().pump_clock_changes("dev", "2024-01-01", "2024-02-15"))
+        self.assertEqual([e.seqNum for e in out], [5, 7])
+
+    def test_missing_clock_changes_key_is_tolerated(self):
+        with patch.object(TandemSourceApi, "get_pump_logs", return_value={}):
+            out = list(self._api().pump_clock_changes("dev", "2024-01-01", "2024-01-10"))
+        self.assertEqual(out, [])
+
+
 class TestGetRetry(unittest.TestCase):
     """get() retries once on 500, re-logs-in and retries once on 401, and
     raises immediately on other statuses; after one retry it gives up."""

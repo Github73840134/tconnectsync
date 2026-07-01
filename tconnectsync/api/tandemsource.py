@@ -674,4 +674,22 @@ class TandemSourceApi:
         logger.info(f"Read {len(events)} events ({clock_change_count} clock changes skipped)")
         return Events(events)
 
+    def pump_clock_changes(self, tconnect_device_id: str, min_date: Optional[str] = None, max_date: Optional[str] = None) -> Iterator:
+        """Fetch the pump-logs clockChanges (LID_TIME_CHANGED/LID_DATE_CHANGED)
+        across the date range, deduplicated by (sequenceGroup, sequenceNumber).
+        tconnect_device_id is the UUID assignmentId from get_pumper() pumps."""
+        seen = set()
+        clock_changes = []
+        for window_start, window_end in self._pump_log_windows(min_date, max_date):
+            resp = self.get_pump_logs(tconnect_device_id, window_start, window_end)
+            for event in resp.get('clockChanges') or []:
+                key = (event.get('sequenceGroup'), event.get('sequenceNumber'))
+                if key in seen:
+                    continue
+                seen.add(key)
+                clock_changes.append(event)
+
+        logger.info(f"Read {len(clock_changes)} clock changes")
+        return Events(clock_changes)
+
 
