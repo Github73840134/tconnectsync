@@ -246,14 +246,14 @@ class NightscoutEntry:
                 {
                     "time": "00:00",
                     "timeAsSeconds": 0,
-                    "value": pump_settings.cgmSettings.lowGlucoseAlert.mgPerDl
+                    "value": pump_settings.cgmSettings.lowGlucoseAlertMgPerDl
                 }
             ],
             "target_high": [
                 {
                     "time": "00:00",
                     "timeAsSeconds": 0,
-                    "value": pump_settings.cgmSettings.highGlucoseAlert.mgPerDl
+                    "value": pump_settings.cgmSettings.highGlucoseAlertMgPerDl
                 }
             ],
             "timezone": TIMEZONE_NAME, # tconnectsync settings timezone
