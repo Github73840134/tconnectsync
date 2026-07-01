@@ -1,13 +1,19 @@
 import logging
 import arrow
 
-from tconnectsync.util.time import format_datetime
+from typing import Iterable, List, Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from ...api import TConnectApi
+    from ...nightscout import NightscoutApi
+    from ...eventparser.raw_event import BaseEvent
+
 from ...features import DEFAULT_FEATURES
 from ... import features
 from ...eventparser.generic import Events, decode_raw_events, EVENT_LEN
 from ...eventparser.utils import bitmask_to_list
 from ...eventparser import events as eventtypes
 from ...domain.tandemsource.event_class import EventClass
+from tconnectsync.util.time import format_datetime
 from ...parser.nightscout import (
     BASALRESUME_EVENTTYPE,
     NightscoutEntry
@@ -16,17 +22,17 @@ from ...parser.nightscout import (
 logger = logging.getLogger(__name__)
 
 class ProcessBasalResume:
-    def __init__(self, tconnect, nightscout, tconnect_device_id, pretend, features=DEFAULT_FEATURES):
+    def __init__(self, tconnect: "TConnectApi", nightscout: "NightscoutApi", tconnect_device_id: str, pretend: bool, features: List[str] = DEFAULT_FEATURES) -> None:
         self.tconnect = tconnect
         self.nightscout = nightscout
         self.tconnect_device_id = tconnect_device_id
         self.pretend = pretend
         self.features = features
 
-    def enabled(self):
+    def enabled(self) -> bool:
         return features.PUMP_EVENTS in self.features
 
-    def process(self, events, time_start, time_end):
+    def process(self, events: Iterable, time_start: arrow.Arrow, time_end: arrow.Arrow) -> List[dict]:
         logger.debug("ProcessBasalResume: querying for last uploaded resume-suspension")
         last_upload = self.nightscout.last_uploaded_entry(BASALRESUME_EVENTTYPE, time_start=time_start, time_end=time_end)
         last_upload_time = None
@@ -46,7 +52,7 @@ class ProcessBasalResume:
 
         return ns_entries
 
-    def write(self, ns_entries):
+    def write(self, ns_entries: List[dict]) -> int:
         count = 0
         for entry in ns_entries:
             if self.pretend:
@@ -59,7 +65,7 @@ class ProcessBasalResume:
         return count
 
 
-    def resume_to_nsentry(self, event):
+    def resume_to_nsentry(self, event: "BaseEvent") -> Optional[dict]:
         if type(event) == eventtypes.LidPumpingResumed:
             return NightscoutEntry.basalresume(
                 created_at = format_datetime(event.eventTimestamp),
